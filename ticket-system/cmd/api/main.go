@@ -3,12 +3,12 @@ package main
 import (
 	"log"
 	"net/http"
-	"os" // os paketini eklemeyi unutma
+	"os"
 	"ticket-system/internal/models"
 	"ticket-system/internal/worker"
 
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv" // Bu paketi kullanacağız
+	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -16,16 +16,26 @@ import (
 var DB *gorm.DB
 
 func main() {
-	// 1. .env Dosyasını Yükle
-	// Eğer dosya bulunamazsa hata verir ama programı durdurmayabiliriz (tercihe bağlı)
-	if err := godotenv.Load(); err != nil {
-		log.Println("Uyarı: .env dosyası bulunamadı veya okunamadı")
+	// 1. .env Dosyasını Yükle (proje kök dizininden)
+	// Önce mevcut dizini dene, sonra üst dizinleri dene
+	envPaths := []string{".env", "../../.env"}
+	envLoaded := false
+
+	for _, path := range envPaths {
+		if err := godotenv.Load(path); err == nil {
+			log.Printf("✅ .env dosyası yüklendi: %s\n", path)
+			envLoaded = true
+			break
+		}
 	}
 
-	// 2. Veritabanı Bağlantısı (Artık .env'den geliyor)
+	if !envLoaded {
+		log.Println("Uyarı: .env dosyası bulunamadı")
+	}
+
+	// 2. Veritabanı Bağlantısı
 	dsn := os.Getenv("DATABASE_URL")
-	
-	// Güvenlik kontrolü: Eğer DSN boşsa programı durdur
+
 	if dsn == "" {
 		log.Fatal("HATA: DATABASE_URL ortam değişkeni ayarlanmamış!")
 	}
