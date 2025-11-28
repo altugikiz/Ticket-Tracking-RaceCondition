@@ -1,0 +1,31 @@
+# Binaries (Derlenmiş dosyalar)
+/bin/
+/dist/
+main
+main.exe
+*.exe
+*.dll
+*.so
+*.dylib
+test
+test.exe
+
+# Dependency directories (Modüller)
+/vendor/
+
+# Environment Variables (ÇOK ÖNEMLİ - Şifreler git'e gitmesin)
+.env
+.env.local
+
+# IDE & Editor files (VS Code, Jetbrains vb.)
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS Specific
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage.out
