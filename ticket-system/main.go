@@ -1,55 +1,69 @@
 package main
 
 import (
-	"fmt"
 	"log"
-	"os"
+	"net/http"
+	"os" // os paketini eklemeyi unutma
+	"ticket-system/internal/models"
+	"ticket-system/internal/worker"
 
-	"github.com/joho/godotenv"
+	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv" // Bu paketi kullanacağız
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
-// Veritabanı modellerimizi Go struct olarak da tanımlayalım
-type Event struct {
-	ID             string `gorm:"type:uuid;default:uuid_generate_v4();primaryKey"`
-	Name           string
-	TotalQuota     int
-	AvailableQuota int
-	Version        int
-}
-
-type Booking struct {
-	ID      string `gorm:"type:uuid;default:uuid_generate_v4();primaryKey"`
-	EventID string
-	UserID  string
-}
-
 var DB *gorm.DB
 
 func main() {
-	// .env dosyasından şifreleri okumak için 
+	// 1. .env Dosyasını Yükle
+	// Eğer dosya bulunamazsa hata verir ama programı durdurmayabiliriz (tercihe bağlı)
 	if err := godotenv.Load(); err != nil {
-		fmt.Println("Warning: .env file not found")
+		log.Println("Uyarı: .env dosyası bulunamadı veya okunamadı")
 	}
 
+	// 2. Veritabanı Bağlantısı (Artık .env'den geliyor)
 	dsn := os.Getenv("DATABASE_URL")
-    // dsn := "postgres://postgres:sifreniz@db.x.supabase.co:5432/postgres"
+	
+	// Güvenlik kontrolü: Eğer DSN boşsa programı durdur
+	if dsn == "" {
+		log.Fatal("HATA: DATABASE_URL ortam değişkeni ayarlanmamış!")
+	}
 
 	var err error
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatal("Veritabanına bağlanılamadı:", err)
+		log.Fatal("DB Hatası:", err)
 	}
 
-	fmt.Println("🚀 Supabase bağlantısı başarılı!")
+	// Auto Migrate
+	DB.AutoMigrate(&models.Event{}, &models.Booking{})
 
-	// Tablodaki veriyi kontrol edelim
-	var event Event
-	result := DB.First(&event)
-	if result.Error != nil {
-		log.Println("Etkinlik bulunamadı, önce SQL ile veri eklediğinden emin ol.")
-	} else {
-		fmt.Printf("Hedef Etkinlik: %s | Kalan Kota: %d\n", event.Name, event.AvailableQuota)
-	}
+	// Worker Başlat
+	worker.StartWorker(DB)
+
+	// Gin Başlat
+	r := gin.Default()
+
+	r.POST("/buy", func(c *gin.Context) {
+		var body struct {
+			EventID string `json:"event_id"`
+			UserID  string `json:"user_id"`
+		}
+
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Geçersiz veri"})
+			return
+		}
+
+		select {
+		case worker.TicketQueue <- worker.TicketRequest{EventID: body.EventID, UserID: body.UserID}:
+			c.JSON(http.StatusOK, gin.H{"message": "İstek kuyruğa alındı", "status": "pending"})
+		default:
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Sistem çok yoğun"})
+		}
+	})
+
+	log.Println("🚀 Sunucu 8080 portunda çalışıyor...")
+	r.Run(":8080")
 }
